@@ -5,7 +5,6 @@ from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm import sessionmaker
 from queue import Queue
 import random
-import re
 
 order = Queue()
 coordinates = []
@@ -17,7 +16,7 @@ Base = declarative_base()
 class Floor(Base):
     __tablename__ = 'floor'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True)
     floor_number = Column(Integer)
     probability = Column(Integer)
     density = Column(Integer)
@@ -62,8 +61,10 @@ class Elevator(Base):
         self.clock += 3
         if elevator.direction == 'UP':
             self.floor += 1
+            print '%6i       %7s        %8i    %8s    ' %(self.clock, 'Next', self.floor, self.direction) , stops , '    ' , order.all()
         elif elevator.direction == 'DOWN':
             self.floor -= 1
+            print '%6i       %7s        %8i    %8s    ' %(self.clock, 'Next', self.floor, self.direction) , stops , '    ' , order.all()
 
     def move_to(self, floor):
         time = 0
@@ -72,13 +73,13 @@ class Elevator(Base):
                 self.floor += 1
                 time += self.speed
                 self.clock += self.speed
-                print '%6i       %7s        %8i    %8s    ' %(self.clock, 'M', self.floor, self.direction) , stops , '    ' , order.all()
+                print '%6i       %7s        %8i    %8s    ' %(self.clock, 'First', self.floor, self.direction) , stops , '    ' , order.all()
         elif self.floor > floor:
             while self.floor != floor:
                 self.floor -= 1
                 time += self.speed
                 self.clock += self.speed
-                print '%6i       %7s        %8i    %8s    ' %(self.clock, 'M', self.floor, self.direction) , stops , '    ' , order.all()
+                print '%6i       %7s        %8i    %8s    ' %(self.clock, 'First', self.floor, self.direction) , stops , '    ' , order.all()
         return self.floor, time
 
     def change_direction(self):
@@ -96,26 +97,19 @@ class Elevator(Base):
 Session = sessionmaker(bind=engine)
 Base.metadata.create_all(engine)
 session = Session()
-a = Floor(floor_number=1, probability=10, density = 6)
-b = Floor(floor_number=2, probability=3, density = 2)
-c = Floor(floor_number=3, probability=3, density = 2)
-d = Floor(floor_number=4, probability=3, density = 2)
-e = Floor(floor_number=5, probability=3, density = 2)
-f = Floor(floor_number=6, probability=3, density = 2)
+a = Floor(id=1, floor_number=1, probability=10, density = 6)
+b = Floor(id=2, floor_number=2, probability=3, density = 2)
+c = Floor(id=3, floor_number=3, probability=3, density = 2)
+d = Floor(id=4, floor_number=4, probability=3, density = 2)
+e = Floor(id=5, floor_number=5, probability=3, density = 2)
+f = Floor(id=6, floor_number=6, probability=3, density = 2)
 elevator_object = Elevator()
 session.add_all([a,b,c,d,e,f])
 session.add(elevator_object)
-# psg = Passenger(current_floor_id=1, destination_floor_id=1, waiting_time=0, direction='UP', waiting=True)
-# session.add(psg)
 session.commit()
 session.flush()
 
 
-
-def load_unload_passengers(floor):
-    if floor in stops:
-        if session.query(Passenger).filter(Passenger.origin_floor.floor_number):
-            pass
 def generate_passengers(sec):
     p = []
     count = 0
@@ -143,8 +137,8 @@ def generate_passengers(sec):
                     session.add(tmp)
                     session.commit()
                     d = 'D' if direction == 'DOWN' else 'U'
-                    if not order.has('%i%s' %(c_f,d)):
-                        order.enqueue('%i%s' %(c_f,d))
+                    if not order.has('%i%s%i' %(c_f,d,d_f)):
+                        order.enqueue('%i%s%i' %(c_f,d,d_f))
                     stops.append(d_f)
                     coordinates.append([c_f, d_f])
                     z = z + 1
@@ -157,7 +151,7 @@ elevator = session.query(Elevator).all()[0]
 def get_stops(stops=[]):
     for passenger in session.query(Passenger).filter_by(in_elevator=True, finished=False):
         if passenger.destination_floor_id not in stops:
-            stops.append(passenger.destination_floor.floor_number)
+            stops.append(passenger.destination_floor_id)
     if elevator.direction == 'DOWN':
         rev = True
     else:
@@ -168,6 +162,7 @@ def get_stops(stops=[]):
 elevator.clock = 0
 while elevator.clock <= 60:
     stops = []
+    request_coordinates = []
     elevator.tick()
     b, count = generate_passengers(1)
     if order.size() > 0:
@@ -176,39 +171,34 @@ while elevator.clock <= 60:
         print '-------------------------------------------------------------------'
         print order.all()
         print 'Next request : %s' %n_r
-        for passenger in session.query(Passenger).filter_by(origin_floor_id = r_f,direction = elevator.direction, in_elevator=False, finished=False):
-            print passenger.origin_floor.floor_number, passenger.destination_floor.floor_number
-        print '-------------------------------------------------------------------'
-        print ' Timer        Section        Elevator    Elevator    Next                Next in '
-        print ' (secs)       (A,B,C)         Floor       Going      Stops               Queue  '
-        print ' ------       -------        --------    --------    ----------------   ---------'
-        print '%6i       %7s        %8i    %8s    ' %(elevator.clock, 'A', elevator.floor, elevator.direction) , stops , '    ' , order.all()
         next_request = order.dequeue()
         request_floor = int(next_request[0])
         elevator.direction = 'UP' if next_request[1] == 'U' else 'DOWN'
         current, time = elevator.move_to(request_floor)
-
+        for passenger in session.query(Passenger).filter_by(origin_floor_id = r_f,direction = elevator.direction, in_elevator=False, finished=False):
+            request_coordinates.append((request_floor, passenger.destination_floor_id))
+        print '-------------------------------------------------------------------'
+        print ' Timer        Section        Elevator    Elevator    Next                Next in '
+        print ' (secs)       (A,B,C)         Floor       Going      Stops               Queue  '
+        print ' ------       -------        --------    --------    ----------------   ---------'
         for passenger in session.query(Passenger).filter_by(origin_floor_id = request_floor,direction = elevator.direction):
             passenger.in_elevator = True
         b, c = generate_passengers(time)
         stops = get_stops()
+        print '%6i       %7s        %8i    %8s    ' %(elevator.clock, 'Next', elevator.floor, elevator.direction) , stops
         while len(stops) != 0:
             elevator.move()
             if elevator.floor in stops:
-                stops.remove(elevator.floor)
-                # print 'B', stops, elevator.direction, elevator.floor, order.all()
-                print '%6i       %7s        %8i    %8s    ' %(elevator.clock, 'B', elevator.floor, elevator.direction) , stops , '    ' , order.all()
+                print '%6i       %7s        %8i    %8s    ' %(elevator.clock, 'Unload', elevator.floor, elevator.direction) , stops
                 for passenger in session.query(Passenger).filter_by(destination_floor_id = elevator.floor):
                     passenger.finished = True
+                stops.remove(elevator.floor)
                 for passenger in session.query(Passenger).filter_by(origin_floor_id = elevator.floor, direction = elevator.direction):
                     passenger.in_elevator = True
-                    if order.has('%i%s' %(passenger.origin_floor.floor_number,passenger.direction[0])):
-                        order.remove('%i%s' %(passenger.origin_floor.floor_number,passenger.direction[0]))
+                    if order.has('%i%s%i' %(passenger.origin_floor_id,passenger.direction[0],passenger.destination_floor_id)):
+                        order.remove('%i%s%i' %(passenger.origin_floor_id,passenger.direction[0],passenger.destination_floor.floor_number))
                 stops = get_stops(stops)
-                # print 'C', stops, elevator.direction, elevator.floor, order.all()
-                print '%6i       %7s        %8i    %8s    ' %(elevator.clock, 'C', elevator.floor, elevator.direction) , stops , '    ' , order.all()
-
-
+                print '%6i       %7s        %8i    %8s    ' %(elevator.clock, 'Load', elevator.floor, elevator.direction) , stops
 
 
 

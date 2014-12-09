@@ -35,3 +35,11 @@ class Queue:
             if x == item:
                 return True
         return False
+
+    def next_coordinates(self):
+        x = copy.deepcopy(self.items)
+        y = []
+        for i in x:
+            y.append((int(i[0]),int(i[2])))
+        y.sort(key=lambda x: (x[0], x[1]))
+        return y
