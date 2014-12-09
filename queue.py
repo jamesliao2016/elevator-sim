@@ -23,7 +23,9 @@ class Queue:
         # for i in range(0, len(tmp)):
         #     x.append([tmp.pop(), i])
         # return x
-        return self.items
+        x = copy.deepcopy(self.items)
+        x.reverse()
+        return x
 
     def coordinate(self, x, y):
         if (x,y) not in list(self.coordinates):
